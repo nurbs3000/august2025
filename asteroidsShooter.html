@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Asteroid Shooter Game</title>
+        <style> /* Internal CSS styling. */
+            *{ /* Universal selector. */
+                margin: 0; /* Remove default margin. */
+                padding: 0; /* Remove default padding. */
+                box-sizing: border-box; /* Incluce border and padding in element's total width and height. */
+            }
+            #container{ /* id selector. */
+                width: 100vw; /* 100% of the viewport's width. */
+                height: 100vh; /* 100% of the viewport's height. */
+                background-color: #000007; /* Dark blue background. */
+                position: relative; /* Positioning context. */
+                overflow: hidden; /* Hide overflow, no scrollbars. */
+            }
+            canvas{ /* Type selector. */
+                position: absolute; /* Absolute positioning. */
+                cursor: crosshair; /* Crosshair cursor. */
+            }
+            img{ /* Type selector. */
+                display: none; /* Hide sprite image. */
+            }
+        </style>
+    </head>
+    <body>
+        <div id="container"> <!-- Game container. -->
+            <canvas></canvas> <!-- Game canvas. -->
+            <img src="asteroid_shooter.png" id="asteroid_shooter"> <!-- Sprite sheet (hidden). -->
+        </div>
+        <script> // Embedded JavaScript. 
+//*************************** GLOBAL VARIABLES **********************
+const contElem = document.querySelector('#container'); // DOM elements references.
+const canvasElem = document.querySelector('canvas');
+const sprites = document.querySelector('img#asteroid_shooter');
+const ctx = canvasElem.getContext('2d'); // 2D rendering context.
+const π = Math.PI; // Shortcut for PI. Alt code 227.
+const BASE_VEL = 0.3; // Base velocity pixels/ms.
+const canvasExtent = 48; // Off-screen boundary threshold.
+const gameObjs = []; // Array to store all game objects.
+let scale; // Scaling factor for sprites.
+const keys = new Set(); // Set for tracking pressed keys.
+let mouseX, mouseY, isMouseDown; // Mouse state variables.
+let lastTime; // Last animation frame timestamp.
+let asteroidInterval = 5000; // Asteroid spawn interval (ms).
+let asteroidLastTime  = 0; // Last asteroid span time.
+
+//*************************** EVENTS ********************************
+document.addEventListener('keydown',handleKeys); // Keyboard event listeners.
+document.addEventListener('keyup',handleKeys);
+contElem.addEventListener('mousedown',handleMouse); // Mouse event listeners.
+contElem.addEventListener('mouseup',handleMouse);
+contElem.addEventListener('mousemove',handleMouse);
+
+//*************************** LOGIC *********************************
+class GameObj{ 
+    constructor(family){
+        const {width:W, height:H} = canvasElem; // Destructuring syntax with alias. Shortcuts W,H for canvas width and height.
+        this.family = family; // Object type (ship, bullet, asteroid);
+        switch(family){ 
+            case 'playerShip': // Player ship constructor case.
+                this.x = W/2;               // Center x.
+                this.y = H/2;               // Center y.
+                this.angle = 0;             // Initial rotation angle.
+                this.shotsInterval = 200;   // Shooting cooldown (ms).
+                this.lastShotTime = 0;      // Last shot timestam.
+                this.radius = 32;           // Collision radius.
+                this.sX = 0;                // Sprite sheet x position.
+                this.sY = 0;                // Sprite sheet y position.
+                this.sW = 64;               // Sprite width.
+                this.sH = 64;               // Sprite height.
+                break;
+            case 'bullet': // Bullet constructor case.
+                const ship = gameObjs.find(obj=>obj.family === 'playerShip'); // Find player ship.
+                this.x = ship.x+ship.sH/2*scale*Math.cos(ship.angle); // Start at ship nose.
+                this.y = ship.y+ship.sH/2*scale*Math.sin(ship.angle);
+                this.xVel = BASE_VEL*2*Math.cos(ship.angle); // Velocity x component.
+                this.yVel = BASE_VEL*2*Math.sin(ship.angle); // Velocity y component.
+                this.angle = ship.angle;// Inherit ship angle.
+                this.radius = 8;        // Collision radius. 
+                this.sX = 64;           // Sprite sheet x position.
+                this.sY = 0;            // Sprite sheet y position.
+                this.sW = 16;           // Sprite whidt.
+                this.sH = 16;           // Sprite height.
+                break;
+            case 'asteroid': // Asteroid constructor case.
+                this.x = W*Math.random(); // Random x position.
+                this.y = -canvasExtent/2; // Start above screen.
+                this.xVel = (Math.random()-.5)*BASE_VEL; // Random x velocity
+                this.yVel = (Math.random()-.5)*BASE_VEL; // Random y velocity
+                this.angle = Math.random()*2*π; // Random initial rotation.
+                this.angularVel = (Math.random()-.5)*.01; // Random spip speed.
+                this.radius = 24;           // Collision radius.
+                this.HP = 10;               // Current health points.
+                this.maxHP = 10;            // Max health points.
+                this.sX = 80+(Math.random()*3 | 0)*48; // Random sprite variant (1 from 3).
+                this.sY = 0;                // Sprite sheet y position.
+                this.sW = 48;               // Sprite width.
+                this.sH = 48;               // Sprite height.
+        }
+    }
+    update(t){ // Update game object (ship, bullet, asteroid).
+        const {width:W, height:H} = canvasElem; // Desructurin syntax with alias.
+        switch(this.family){ // Object type (ship, bullet, asteroid);
+            case 'playerShip': // Update for ship.
+                const vel = BASE_VEL*1; // Movement speed.
+                if(keys.has('ArrowLeft')) this.x -= vel*t; // Move lelf.
+                if(keys.has('ArrowRight')) this.x += vel*t;// Move right.
+                if(keys.has('ArrowUp')) this.y -= vel*t;   // Move up.
+                if(keys.has('ArrowDown')) this.y += vel*t; // Move down.
+                this.angle = Math.atan2(mouseY-this.y,mouseX-this.x); // Rotate towads mouse (look at mouse).
+                // Shooting logic.
+                const now = performance.now(); // Capture current time.
+                if(isMouseDown && now-this.lastShotTime >= this.shotsInterval){ // If mouse is pressed and since last shot passed enough time.
+                    this.lastShotTime = now; // Update shot timer.
+                    gameObjs.push(new GameObj('bullet')); // Create new bullet.
+                }
+                break;
+            case 'bullet': // Update for bullet.
+                this.x += this.xVel*t; // Move the bullet.
+                this.y += this.yVel*t;
+                if(this.x < -canvasExtent || this.x > W+canvasExtent || this.y < -canvasExtent || this.y > H+canvasExtent){ // If bullet outside bounaries.
+                   gameObjs.splice(gameObjs.indexOf(this),1); // Remove bullet.
+                   return;
+                }
+                // Collision with asteroids logic.
+                gameObjs.forEach(obj => { // Loops through all game object.
+                    if (obj.family === 'asteroid' && 
+                        Math.hypot(this.x - obj.x, this.y - obj.y) < this.radius + obj.radius) { // Only check asteroids and if bullet and asteroids collide.
+                        obj.HP--; // Damage asteroid.
+                        gameObjs.splice(gameObjs.indexOf(this), 1); // Remove bullet.
+                    }
+                });
+                break;
+            case 'asteroid': // Update for asteroid.
+                this.x += this.xVel*t; // Asteroid movement.
+                this.y += this.yVel*t;
+                this.angle += this.angularVel*t; // Apply rotation.
+                // Screen wrapping (accounting canvasExtent).
+                if(this.x < -canvasExtent) this.x = W+canvasExtent;
+                if(this.x > W+canvasExtent) this.x = -canvasExtent;
+                if(this.y < -canvasExtent) this.y = H+canvasExtent;
+                if(this.y > H+canvasExtent) this.y = -canvasExtent;
+                if (this.HP <= 0) gameObjs.splice(gameObjs.indexOf(this), 1); // Remove asteroid if health is depleted.
+                break;
+        }
+    }
+    render(){ // Draws game object on canvas.
+        ctx.save(); // Save canvas state.
+        ctx.translate(this.x,this.y); // Move canvas (0,0) to object position.
+        if(this.family === 'asteroid'){ // Asteroid case.
+            ctx.lineWidth = this.sW*scale/10 | 0; // Health bar line width.
+            const offset = this.sH*.6*scale; // Health bar y offset.
+            const fullWidth = this.sW*scale; // Full health bar width.
+            ctx.beginPath();
+            ctx.strokeStyle = 'red'; // Red background (missing health).
+            ctx.moveTo(-fullWidth/2, -offset); 
+            ctx.lineTo(fullWidth/2, -offset);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.strokeStyle = 'green'; // Green background (current health).
+            ctx.moveTo(-fullWidth/2, -offset);
+            ctx.lineTo((this.HP/this.maxHP * fullWidth) - fullWidth/2, -offset);
+            ctx.stroke();
+        }
+        ctx.rotate(this.angle+π/2); // Rotate the canvas by the object's angle + 90 degrees. Adds 90° because sprite artwork faces upward by default. Rotation is applied after translate(), so it spins around the object's center.
+        ctx.drawImage(sprites,this.sX,this.sY,this.sW,this.sH,-this.sW/2*scale,-this.sH/2*scale,this.sW*scale,this.sH*scale); // Draw object.
+        ctx.restore(); // Restore canvas state.
+    }
+}
+function handleMouse(e){ // Handel mouse events.
+    e.preventDefault(); // Prevent default browser behavior.
+    switch(e.type){ // Type of mouse event.
+        case 'mousedown': isMouseDown = true; break; // Mouse pressed.
+        case 'mouseup': isMouseDown = false; break; // Mouse released.
+        case 'mousemove': [mouseX,mouseY] = [e.clientX,e.clientY]; break; // Update global mouse state variables.
+    }
+}
+function handleKeys(e){ 
+    e.type === 'keydown' // Ternary operator.
+        ? (keys.add(e.key), // Add pressed key to Set.
+        [["ArrowUp","ArrowDown"],["ArrowLeft","ArrowRight"]].forEach(([a,b])=>keys.has(a) && keys.has(b) && keys.delete(e.key))) // Prevent opposite key presses (e.g., left+right).
+        : keys.delete(e.key); // e.type === 'keyup' case. Remove released key form Set.
+}
+function animate(timestamp){ // Main animation loop.
+    if(!lastTime) lastTime = timestamp; // Initialize of first frame.
+    const frameTime = timestamp-lastTime; // Calculate delta time(frame time).
+    lastTime = timestamp; // Update last frame time.
+    ctx.clearRect(0,0,canvasElem.width,canvasElem.height); // Clear canvas.
+    gameObjs.forEach(obj=>{ // Loops through every object.
+        obj.update(frameTime); // Update game object.
+        obj.render();   // Draw game object.
+    });
+    // Spawn asteroids logic. Similar to shooting bullets.
+    const now = performance.now(); 
+    if(now-asteroidLastTime > asteroidInterval){
+        gameObjs.push(new GameObj('asteroid'));
+        asteroidLastTime = now;
+    }
+    requestAnimationFrame(animate); // Continue animation logic.
+}
+
+//*************************** INITIALIZATION ************************
+onload = ()=>{ // When page loads.
+    [canvasElem.width,canvasElem.height] = [contElem.offsetWidth,contElem.offsetHeight]; // Set canvas size.
+    scale = Math.min(canvasElem.width,canvasElem.height)/600; // Calculate scaling factor.
+    gameObjs.push(new GameObj('playerShip')); // Creat player ship.
+    requestAnimationFrame(animate); // Start animation loop.
+}
+//*******************************************************************
+        </script>
+    </body>
+</html>

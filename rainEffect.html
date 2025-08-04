@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Rain effect</title>
+        <style> /* Internal CSS styling. */
+            *{ /* Universal selector. */
+                margin: 0; /* Remove default margin. */
+                padding: 0; /* Remove default padding. */
+                box-sizing: border-box; /* Include padding and border in element's total width and height. */
+            }
+            #image{ /* id selector. */
+                width: 100vw; /* 100% of the viewport's width. */
+                height: 100vh; /* 100% of the viewport's height. */
+                background-image: url('night_city1.jpg'); /* Background image. */
+                background-size: cover; /* Covers entire element. */
+                filter: contrast(1.1) brightness(0.9); /* Image enhancement. */
+                position: relative; /* Required to position created ripples(divs). */
+                overflow: hidden; /* Clip overflow, no scrollbars. */
+            }
+            .ripple{ /* Class selector. */
+                position: absolute; /* Required for style.left, style.top to work. */
+                transform: translate(-50%,-50%) scale(0); /* Centers and scales down. */
+                background: radial-gradient( /* Circular gradient. */
+                    circle at center, /* Gradient centered. */
+                    rgba(255,255,255,0.0) 0%, /* Transparent start. */
+                    rgba(255,255,255,0.0) 35%,/* Maintains transparency. */
+                    rgba(255,255,255,.9) 50%, /* White ring. */
+                    rgba(255,255,255,0.0) 65% /* Fades out. */
+                    
+                );
+                transition: transform 1s ease-out, opacity 1s ease-out; /* Animation properties. */
+                will-change: transform, opacity; /* Performance hint. */
+                visibility: hidden; /* Initially hidden. */
+                opacity: 1; /* Fully opaque initially. */
+                mix-blend-mode: screen; /* Blending mode. */
+            }
+            .ripple.active{ /* Compound selector. */
+                visibility: visible; /* Makes visible. */
+                opacity: 0; /* Fades out. */
+                transform: translate(-50%,-50%) scale(2); /* Scales up. */
+            }
+        </style>
+    </head>
+    <body>
+        <div id="image"></div> <!-- Container for ripples. -->
+        <script> // Embedded JavaScript.
+//*************************** GLOBAL VARIABLES **********************
+const imageElem = document.querySelector('#image'); // Reference to container. 
+
+//*************************** LOGIC *********************************
+async function rain(){ // async needed to use await for sequential animation timing.
+    while(true){ // Infinite animation loop.
+        for(let i = 0; i < 200; i++){ // Process all 200 ripple elements.
+            const rippleElem = document.querySelector(`#i${i}`); // Gets ripple element.
+            rippleElem.style.left = `${imageElem.offsetWidth*Math.random()}`; // Random x position.
+            rippleElem.style.top = `${imageElem.offsetHeight*Math.random()}`; // Random y position.
+            rippleElem.style.transformOrigin = 'center'; // Ensures scaling from center.
+            rippleElem.classList.add('active'); // Triggers animation (CSS selector .ripple.active).
+            rippleElem.ontransitionend = ()=>{
+                rippleElem.classList.remove('active'); // Resets after animation(transition to be technically correct).
+                rippleElem.ontransitionend = null; // Explicit cleanup.
+            }
+            await sleep(5); // Pauses execution for 5ms between ripples in real time (async/await syntax).
+        }
+    }
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}; // Async delay helper function.
+//*************************** INITIALIZATION ************************
+onload = ()=>{ // Runs when page loads.
+    for(let i = 0; i < 200; i++){ // Creates 200 ripple div elements.
+        const elem = document.createElement('div'); // Create div.
+        elem.className = 'ripple'; // Sets class.
+        elem.id = `i${i}`; // Sets unique id (encode index in, for easy selecttion later in rain function. 
+        const size = 30+Math.random()*30 | 0; // Random size (30-60px). 
+        elem.style = `width:${size}px; height:${size}px; left:${imageElem.offsetWidth*Math.random()}px; top:${imageElem.offsetHeight*Math.random()}px;` // Sets size and position.
+        imageElem.appendChild(elem); // Adds to container.
+    }
+    rain(); // Starts animation.
+}
+//*******************************************************************
+        </script>
+    </body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Run-Length Encoding</title>
+        <style> /* Internal CSS styling. */
+            *{  /* Universal selector. */
+                margin: 0; /* Remove default margin. */
+                padding: 0; /* Remove default padding. */
+                box-sizing: border-box; /* Include border and padding in element's total width and height. */
+                font: 2.5vh Arial; /* Responsive font. */
+            }
+            #container{ /* id selector. */
+                width: 100vw; /* 100% of the viewport's width. */
+                height: 100vh; /* 100% of the viewport'w height. */
+                padding: 3vw; /* padding using viewport width units. */
+                background: #111; /* dark backgroung. */
+                display: grid; /* CSS Grid layout. */
+                grid-template: repeat(3,1fr)/150px 1fr; /* 3 rows/2 columns */
+                grid-template-areas: /* Named grid areas. */
+                    "generate text-a"
+                    "compress text-b"
+                    "decompress text-c";
+            }
+            .text-content{ /* Class selector. Selects all text display areas. */
+                color: green; /* Green text color. */
+                padding: 8px; /* Internal spacing. */
+
+            }
+            button{ /* Type selector. */
+                width: fit-content; /* Width based on content. */
+                min-width: 110px; /* Minimum button width. */
+                height: 25px; /* Fixed height. */
+                place-self: center; /* Center button in grid cell. */
+                font: 16px Arial; /* Button font. */
+                font-weight: bold; /* Bold text. */
+                background-color: seaGreen; 
+            }
+        </style>
+    </head>
+    <body>
+        <div id="container"> <!-- Top-level container. -->
+            <button id="generate" style="grid-area:generate">Generate</button>
+            <button id="compress" style="grid-area:compress">Compress</button>
+            <button id="decompress" style="grid-area:decompress">Decompress</button>
+            <span class="text-content" style="grid-area:text-a"></span>
+            <span class="text-content" style="grid-area:text-b"></span>
+            <span class="text-content" style="grid-area:text-c"></span>
+        </div>
+        <script>
+//*************************** GLOBAL VARIABLES **********************
+// References to span elements.
+const textAElem = document.querySelector('[style="grid-area:text-a"]');
+const textBElem = document.querySelector('[style="grid-area:text-b"]');
+const textCElem = document.querySelector('[style="grid-area:text-c"]');
+const letters = ['A','B']; // Available letters for generation.
+//*************************** EVENTS ********************************
+document.addEventListener('click',e=>{ // Listen for buttons clicks.
+    switch(e.target.id){ // Switch based in buton's id.
+        case 'generate': // Generate button case.
+            textAElem.textContent = ''; // Clear text area A.
+            textBElem.textContent = ''; // Clear text area B.
+            textCElem.textContent = ''; // Clear text area C.
+            textAElem.style.overflow = 'hidden'; // Hide overflow fo height check.
+            const generateUntilFull = () => { // Recursive word generation function. 
+                const newWord = Array.from({length: wordLength()}, (_, i)=> // Create word array.
+                i === 0 // First character condition.
+                    ? letters[Math.random()*letters.length | 0] // Random first letter.
+                    : Math.random() < 0.7 // 70% chance for repeated letters.
+                        ? letters[Math.random()*letters.length | 0].repeat(1+Math.random()*3 | 0) // Repeat 1-3 times.
+                        : letters[Math.random()*letters.length | 0] // Single letter.
+                ).join(''); // Conver array to string.
+                textAElem.textContent += `${newWord} `; // Append new word with spacing. 
+                if (textAElem.scrollHeight > textAElem.clientHeight) { // Chec if content overflows.
+                textAElem.textContent = textAElem.textContent.slice(0, -newWord.length).trimEnd(); // Remove last word if overflow.
+                return; // Exit recursion.
+                }
+                requestAnimationFrame(generateUntilFull); // Continue generation.
+            };
+            generateUntilFull(); // start generation.
+            break;
+        case 'compress': // Compress button case.
+            updateGridContent('text-b', // Update text area B wich compressed text.
+            textAElem.textContent // Source text.
+                .replace(/([A-Za-z]+)|(\s+)/g, (fullMatch, capturedGroup)=> // Find words or spaces.
+                capturedGroup // Ternary opertator.
+                    ? capturedGroup.replace(/([A-Za-z])\1*/g, letterRun=> // Find letter runs.
+                        letterRun.length > 1 
+                            ? letterRun.length+letterRun[0] // Compress runs (AA→2A) 
+                            : letterRun[0] // If single letter A→A
+                        )
+                    : fullMatch // Preserve spaces.
+                )
+            );
+            break;
+        case 'decompress': // Decompress button case.
+            updateGridContent('text-c', // Update area C with decompressed text.
+                textBElem.textContent // Source compressed text.
+                .replace(/(\d+)([A-Za-z])|(\s+)/g, (fullMatch, runLength, char, whitespace)=> // Find compressed runs or spaces.
+                    whitespace || char.repeat(parseInt(runLength)) // Either keep space or expand run (3A→AAA);
+                ) 
+            );
+            break;
+    }
+});
+//*************************** LOGIC *********************************
+function updateGridContent(area,content){ // Helper to update span element content.
+    document.querySelector(`[style="grid-area:${area}"]`).textContent = content; // Find element by area and update.
+}
+function wordLength(){ // Generate weighted random word length.
+    return [1,2,3,4,5,6,7,8,9,10][ // Possible length.
+    [0.002,0.053,0.220,0.433,0.619,0.747,0.836,0.904,0.949,1.0] // Cumulative probabilities.
+    .findIndex(p => Math.random() < p) // Find first threshold exceeded.
+    ];
+}
+//*******************************************************************
+        </script>
+    </body>
+</html>

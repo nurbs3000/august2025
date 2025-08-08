@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Terrain Generator. Stochastic Sampling</title>
+        <style> /* Internal CSS styling. */
+            *{ /* Universal selector. */
+                margin: 0; /* Remove default margin. */
+                padding: 0; /* Remove default padding. */
+                box-sizing: border-box; /* Include border and padding in element's total width and height. */
+            }
+            body{ /* Type selector. */
+                min-width: 100%; /* Full width. */
+                height: 100vh; /* Full viewport height. */
+                display: flex; /* Flex container. */
+                flex-direction: column; /* Vertical flex layout. */
+            }
+            header{ /* Type selector. */
+                width: 100%; /* 100% of the parent's width. */
+                height: 70px; /* Fixed height. */
+                background-color: orange; /* Your choice. */
+                display: flex; /* Flex container. */
+                justify-content: space-evenly; /* Even spacing. */
+                align-items: center; /* Center vertically. */
+                font: 20px Arial; /* Font setting. */
+            }
+            header>section { /* Complex selector. */
+                position: relative; /* Creates new stacking context */
+                z-index: 1;        /* Ensures all sections are clickable */
+                background: orange; /* Match header background */
+                padding: 0 5px;    /* Prevents edge overlap */
+            }
+            figure{ /* Type selector. */
+                width: 100%; /* 100% of the parent's width. */
+                height: 100%; /* 100% of the parent's height. */
+                background-color: orangeRed; /* Your choice. */
+                position: relative; /* For absolute positioning of canvas. */
+                display: grid; /* Grid layout. */
+                place-items: center; /* Center content vertically and horizontally. */
+            }
+            canvas{ /* Type selector. */
+                position: absolute;
+            }
+        </style>
+    </head>
+    <body> <!-- Top-level container. -->
+        <header> <!-- Semantic element. Contains controls. -->
+            <section style="min-width:80px;">Cell: px<br> 
+                <input type="number" id="cell_size" min="4" max="40" value="15">
+            </section>
+            <section>Grid<br>
+                <input type="checkbox" id="show_grid" checked autocomplete="off" style="width:22px;height:22px;">
+            </section>
+            <section>Padding<br>
+                <input type="number" id="padding" min="0" max="50" value="5" autocomplete="off">
+            </section>
+            <section>🌳 %<br>
+                <input type="number" id="deciduous_density" min="0" max="50" value="10" autocomplete="off">
+            </section>
+            <section>🌲 %<br>
+                <input type="number" id="evergreen_density" min="0" max="50" value="10" autocomplete="off">
+            </section>
+            <section>Balance: 
+                <output class="balance"></output><br>
+                <input type="range" id="balance" min="0" max="100" value="50" autocomplete="off">
+            </section>
+            <button id="generate" style="width:120px;height:30px;">Generate</button>
+        </header>
+        <figure> <!-- Semantic element. Canvas container. -->
+            <canvas></canvas>
+        </figure>
+        <script>
+//*************************** GLOBAL VARIABLES **********************
+const bodyElem = document.querySelector('body'); // References to DOM elements for convenience. 
+const headerElem = document.querySelector('header');
+const figureElem = document.querySelector('figure');
+const canvasElem = document.querySelector('canvas');
+const ctx = canvasElem.getContext('2d'); // 2D drawing context.
+let terrain; // 2D array containing objects representing terrain cells (initialized in initializeAll()).
+let rowQt, colQt; // Number of rows and columns.
+const params = {}; // Object for storing settings (key/value pairs will correspond to id/value of input elemement in the header).
+//*************************** EVENTS ********************************
+headerElem.addEventListener('change',inputHandler); // Input change handler.
+document.querySelector('#generate').addEventListener('click',inputHandler); // Generate button handler.
+//*************************** LOGIC *********************************
+function generate(){ // Main generation function.
+    gridIterator((r,c)=>{ // First pass: random land/water.
+        terrain[r][c].type = Math.random() < params.balance/100 ? 'land' : 'water'; // Stochastic sampling (random chance): balance% = land chance.
+        const d = params.padding; // Shortcut for convenience.
+        if(r < d || r > rowQt-d || c < d || c > colQt-d){ // Cells close to the maps edge (defined by params.padding).
+            terrain[r][c].type = Math.random() > params.balance/100+.4 ? 'land' : 'water'; // Edge-boosted stochastic sampling: (balance% + 40%) land chance.
+        }
+    });
+    gridIterator((r,c)=>{ // Second pass: smoothing.
+        if(!(r === 0 || r === rowQt-1 || c === 0 || c === colQt-1)){ // Skip cells close to the maps edge.
+            const neighbors = [
+                terrain[r-1][c],terrain[r+1][c],
+                terrain[r][c-1],terrain[r][c+1]
+            ].filter(v=>v.type === 'land').length; // Land heighbors count.
+            if(neighbors >= 3) terrain[r][c].type = 'land'; // Become land if 3+ neighbors are 'land' cells.
+            if(neighbors <= 1) terrain[r][c].type = 'water'; // Become water is 0-1 neighbores are 'land' cells.
+        }
+    });
+    gridIterator((r,c)=>{ // Third pass: tree placement.
+        if(terrain[r][c].type === 'land'){ // only for 'land' cells.
+            terrain[r][c].content = ['deciduous','evergreen',''][ // Choose tree type.
+                [ // Probability thresholds.
+                params.deciduous_density,
+                params.deciduous_density+params.evergreen_density,
+                100]
+            .findIndex(v=>100*Math.random() < v)]; // Stochastic multinomial sampling: 3+ possible outcomes (🌳/🌲/empty) with weighted probabilities.
+        }
+    });
+    renderTerrain(); // Draw everything.
+}
+function initializeAll(){ // Set all parameters.
+    ['cell_size','balance','padding','deciduous_density','evergreen_density'].forEach(id=>{ // Process each parameter.
+        params[id] = Number(document.querySelector(`#${id}`).value); // Get value from current input element.
+        if(id === 'balance') document.querySelector(`.${id}`).textContent = `${params[id]} x ${100-params[id]}`; // Update land/water balance display.
+        params.show_grid = document.querySelector('#show_grid').checked; // Get 'show_grid' boolean flag.
+    });
+    [rowQt,colQt] = [figureElem.offsetHeight/params.cell_size | 0, figureElem.offsetWidth/params.cell_size | 0]; // Destructuring syntax. Calculate grid size. | 0 is fast floor.
+    [canvasElem.width,canvasElem.height] = [colQt*params.cell_size,rowQt*params.cell_size]; // Calculate and set canvas size.
+    terrain = Array.from({length:rowQt},()=>
+        Array.from({length:colQt},()=>({type:'',content:''}))); // Create 2D terrasin array.
+}
+function renderTerrain(){ // Draw terrain on canvas.
+    const {width:W,height:H} = canvasElem; // Desctucturing syntax with aliases. Shortcuts for convenience.
+    const cS = params.cell_size; // Shortcut.
+    ctx.clearRect(0,0,W,H); // Clear canvas.
+    gridIterator((r,c)=>{ // Draw each cell.
+            ctx.fillStyle = {'water':'dodgerBlue','land':'darkGreen'}[terrain[r][c].type]; // Set fill color.
+            ctx.fillRect(c*cS,r*cS,cS,cS); // Draw cell.
+            if(terrain[r][c].content !== ''){ // If cell has content(tree).
+                const fSize = cS*.6; // Emoji size.
+                ctx.save(); // Save canvas context.
+                ctx.translate(c*cS+cS/2,r*cS+cS/2); // Position canvas (0,0) point on celles center.
+                ctx.font = `${fSize}px Arial`; // Set font.
+                ctx.fillText(terrain[r][c].content === 'deciduous' ? '🌳' : '🌲',-fSize*.66,fSize*.34); // Draw emoji.
+                ctx.restore(); // Restore canvas context.
+            }
+        });
+    if(params.show_grid){ // Draw grid lines if chechbox is checked.
+        ctx.strokeStyle = '#555'; // Grid lines color.
+        ctx.lineWidth = 1; // Grid lines width.
+        [0,1].forEach(v=>{ // 0=vertical, 1=horizontal
+            for(let p=cS; p<(v?H:W); p+=cS) { // For each line.
+                ctx.beginPath(); 
+                ctx.moveTo(v?0:p, v?p:0); // Ternary operators implement logic to draw vetrical or horizontal grid lines.
+                ctx.lineTo(v?W:p, v?p:H);
+                ctx.stroke();
+            }
+        });
+    }
+}
+function inputHandler(){ // Handle all inputs.
+    initializeAll(); // Initialization.
+    generate(); // Generate terrain.
+}
+function gridIterator(callbackFn){ // Iterate over all cells.
+    for(let r = 0; r < rowQt; r++) // For each row.
+        for(let c = 0; c < colQt; c++) // For each column.
+            callbackFn(r,c); // Execute callback function.
+}
+//*************************** INITIALIZATION ************************
+onload = ()=>{ // When page loads.
+    inputHandler(); // Initialize and generate.
+}
+//*******************************************************************
+        </script>
+    </body>
+</html>

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Event Delegation. Dynamic keys</title>
+        <style> /* Internal CSS styling. */
+            *{ /* Universal selector. */
+                margin: 0; /* Remove default margin. */
+                padding: 0; /* Remove default padding. */
+                box-sizing: border-box; /* Include border and padding in elements total width and height. */
+            }
+            body{ /* Type selector. */
+                min-width: 100%; /* Ensures body never shrinks below viewport width. */
+                height: 100vh; /* 100% of the viewport's height. */
+                background-color: darkSlateBlue; /* All colors are up to you. */
+                display: flex; /* Flex container. */
+                flex-direction: column; /* Vertical layout. */
+                justify-content: center; /* Center vertically. */
+                gap: 3vw; /* Gap between flex items. */
+            }
+            output{ /* Type selector. */
+                width: 100%; /* 100% of parent's available width. */
+                height: 10vw; /* Relative height. */
+                background: indigo;
+                color: lavender;
+                font-size: 3vw; /* Responsive font. */
+                padding: 1vw; /* Interal spacing. */
+                word-wrap: break-word; /* Word breaking. */
+                overflow-y: auto; /* Vertical scroll. */
+                overflow-x: hidden; /* Hide horizontal scroll. */
+            }
+            section{ /* Type selector. */
+                width:100%; /* 100% of parent's available width. */
+                height: 30vw; /* Maintains aspect ratio across devices. */
+                background-color: slateBlue;
+                position: relative; /* For absolute buttons positioning. */
+            }
+            .key-button{ /* Class selector. */
+                width: 8vw; /* 8% of the viewport width. */
+                height: 8vw; /* 8% of the viewort width. */
+                background-color: gold;
+                display: grid; /* Grid layout. */
+                place-items: center; /* Center vertically and horizontally.*/
+                position: absolute; /* Enables JS-controlled positioning via style.top/left. */
+                font-size: 3vw; /* Responsive font. */
+                border-radius: 2vw; /* Rounded corners. */
+            }
+        </style>
+    </head>
+    <body> <!-- Top-level container. -->
+        <output></output> <!-- Output display area. -->
+        <section></section> <!-- Button container. -->
+        <script> // Embedded JavaScript.
+//*************************** GLOBAL VARIABLES **********************
+const sectionElem = document.querySelector('section'); // Reference to section.
+const outputElem = document.querySelector('output'); // Reference to output.
+const chars = ['Q','W','E','R','T','Y','U','I','O','P',
+            'A','S','D','F','G','H','J','K','L',';',
+            'Z','X','C','V','B','N','M',',','.','/']; // 'Keyboard' layout.
+let isAddButton = true; // add/remove buttons boolean flag.
+//*************************** EVENTS ********************************
+sectionElem.addEventListener('click',handleButtons); // Delegated click handler.
+//*************************** LOGIC *********************************
+function handleButtons(e){  // Handles delegated button clicks.
+    if(e.target.tagName != 'BUTTON') return; // Filters out non-button clicks.
+    outputElem.textContent += e.target.textContent; // Appends characters.
+}
+function addRemoveButton(){ 
+    const presentChars = [...sectionElem.children].map(elem=>elem.textContent); // Currently existing buttons.
+    if(presentChars.length === chars.length) isAddButton = false; // Switch to remove mode.
+    if(presentChars.length === 0) isAddButton = true; // Switch to add mode.
+    if(isAddButton){ // If adding buttons.
+        const absentChars = chars.filter(c=>!presentChars.includes(c)); // Missing characters.
+        addButton(absentChars[absentChars.length*Math.random() | 0]); // Add random button from missing list.
+    }else{ 
+        const buttons = Array.from(sectionElem.children); // Present buttons.
+        const randomBtn = buttons[Math.random()*buttons.length | 0]; // Select random buttun from present.
+        randomBtn.remove(); // Remove it.
+    }
+}
+function addButton(char){ // Creates and position new buttons.
+    const vw = sectionElem.offsetWidth/100; // Viewport unit(1% of the viewport width).
+    const elem = document.createElement('button'); // Create button element.
+    elem.className = 'key-button'; // Set class, to allow CSS style all buttons at once, using class selector.
+    elem.textContent = char; // Set char.
+    const charIdx = chars.findIndex(c=>c === char); // Get index in 'chars' array.
+    const row = charIdx/10 | 0; // Grid row (0-2), | 0 is fast floor.
+    const col = charIdx%10; // Grid column (0-9).
+    elem.style = `width:${8*vw}px; height:${8*vw}px; left:${col*10*vw+vw}px; top: ${row*10*vw+vw}px`; // Size & Position element.
+    sectionElem.append(elem); // Adds to DOM.
+}
+async function eternalLoop(){ // Runs until tab closure.
+    while(true){
+        addRemoveButton(); // Modifies button set.
+        await new Promise(r=>setTimeout(r,2000)); // 2-second delay in real time.
+    }
+}
+//*************************** INITIALIZATION ************************
+onload = ()=>{ // When page loads.
+    eternalLoop(); // Start buttons cycle.
+}
+//*******************************************************************
+        </script>
+    </body>
+</html>

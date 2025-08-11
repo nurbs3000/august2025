@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Frame rate</title>
+        <style> /* Internal CSS styling. */
+            *{ /* Univerval selector. */
+                margin: 0; /* Reset default margin. */
+                padding: 0; /* Reset default padding. */
+                box-sizing: border-box; /* Include padding and border in element's total width and height. */
+            }
+            body{ /* Type selector. */
+                min-width: 100%; /* Ensures full width. */
+                height: 100vh; /* 100% of the vieport's width. */
+                display: flex; /* Flexbox layout. */
+                flex-direction: column; /* Vertical stacking. */
+            }
+            header{ /* Type selector. */
+                width: 100%; /* 100% of parent's available width. */
+                height: 60px; /* Fixed height. */
+                background-color: cadetBlue; /* All colors are up to you. */
+                display: flex; /* Flexbox layout. */
+                justify-content: space-evenly; /* Even space between children. */
+                align-items: center; /* Center content vertically. */
+                font: 2.5vw Arial; /* Responsive font. */
+            }
+            figure{ /* Type selector. */
+                width: 100%; /* 100% of parent's available width. */
+                height: 100%; /* 100% of parent's availabe height (100vh - 60px). */
+                background-color: beige;
+                position: relative; /* Positioning context for canvas. */
+            }
+            canvas{ /* Type selector. */
+                position: absolute; /* Positioned relative to figure. */
+            }
+        </style>
+    </head>
+    <body> <!-- Top-level container. -->
+        <header> <!-- Semantic element. Contains output and control elements. -->
+            <output id="fps"></output>
+            <section>
+                <output class="target-frame-duration">13</output> ms<br>
+                <input type="range" class="target-frame-duration" min="5" max="1000" value="13" autocomplete="off" style="width:40vw;">
+            </section>
+        </header>
+        <figure> <!--Semantic element. Canvas container. -->
+            <canvas></canvas>
+        </figure>
+        <script> // Embedded JavaScript.
+//*************************** GLOBAL VARIABLES **********************
+const figureElem = document.querySelector('figure'); // Reference to figure.
+const outputElem = document.querySelector('output.target-frame-duration'); // Reference to output element (FPS display).
+const canvasElem = document.querySelector('canvas'); // Reference to canvas.
+const ctx = canvasElem.getContext('2d'); // 2D drawing context.
+const π = Math.PI; // Shortcut. Alt conde 227. 
+let previousFrameTimestamp;     // Tracks last frame time.
+let targetFrameDuration = 13;   // Target ms per frame (~75FPS).
+let currentRotationAngle = 0;   // Self explanatory.
+let timeSinceLastRender = 0;    // Accumulates time between rendered frames.
+
+//*************************** EVENTS ********************************
+document.querySelector('input.target-frame-duration').addEventListener('input', handleTimeInput); // Handle slider input changes.
+
+//*************************** LOGIC *********************************
+function handleTimeInput(e) { // 'e' event object, passed by event listener.
+    targetFrameDuration = Number(e.target.value); // Get new target time.
+    outputElem.textContent = targetFrameDuration; // Update dispay (output element).
+}
+
+function animate(currentTimestamp) { // Main animation loop.
+    const elapsedTime = currentTimestamp - previousFrameTimestamp; // Calculates time since last frame.
+    if (elapsedTime >= targetFrameDuration) { // Only render if enough time passed.
+        const {width: W, height: H} = canvasElem; // Destructuring syntac with aliases. Shortcuts for convenience.
+        const vw = W/100; // Viewport unit.
+        ctx.clearRect(0, 0, W, H); // Clear canvas.
+        ctx.strokeStyle = 'orangeRed'; // Set stroke color.
+        ctx.lineWidth = 2*vw; // Set stroke line thickness.
+        // Draw rotated line.
+        ctx.save();                 // Save canvas state.
+        ctx.translate(W/2, H/2);    // Move origin to center.
+        ctx.beginPath();            // Start new path.
+        ctx.moveTo(0, 0);           // Star point.
+        ctx.lineTo(         
+            Math.cos(currentRotationAngle)*W/3, // x endpoint.
+            Math.sin(currentRotationAngle)*W/3  // y endpoint.
+        );
+        ctx.stroke();               // Draw the line.
+        ctx.restore();              // Restore canvas state.
+        
+        currentRotationAngle += π/180; // Increment angle (1 degree).
+        currentRotationAngle %= 2*π; // Prevent overflow.
+        document.querySelector('#fps').textContent = 
+            (1000/elapsedTime).toFixed(1)+" FPS"; // Update FPS display.
+        previousFrameTimestamp = currentTimestamp; // Store render time.
+    }
+    
+    requestAnimationFrame(animate); // Continue animation loop.
+}
+
+//*************************** INITIALIZATION ************************
+window.addEventListener('load', () => { // When page is loaded.
+    [canvasElem.width, canvasElem.height] = 
+        [figureElem.offsetWidth, figureElem.offsetHeight]; // Set canvas size to match figure container.
+    outputElem.textContent = targetFrameDuration; // Initial FPS display.
+    previousFrameTimestamp = performance.now(); // Initialize animation timing.
+    requestAnimationFrame(animate); // Start animation loop.
+});
+//*******************************************************************
+        </script>
+    </body>
+</html>

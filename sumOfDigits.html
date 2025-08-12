@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-state=1.0">
+        <title>Recursive Sum of Digits</title>
+        <style>
+            *{ /* Universal Sum of Digits. */
+                margin: 0; /* Removes browser-default margin. */
+                padding: 0; /* Removes browser-default padding. */
+                box-sizing: border-box; /* Element's sizing include padding and border. */
+            }
+            body{ /* Type selector. Main display. */
+                min-width: 100%; /* Ensures full width. */
+                height: 100vh; /* 100% of the viewport's width. */
+                background-color: linen; /* Light neutral. */
+                color: maroon; /* High-contrast text color. */
+                white-space: pre-wrap; /* Critical: Enables newlines with special character \n. */
+                user-select: none; /* Prevents text selection. */
+                font: 3vw Arial; /* Responsive font. */
+            }
+        </style>
+    </head>
+    <body> <!-- All content will be dynamically inserted here via JS. -->
+        <script> // Embedded JavaScript.
+//*************************** GLOBAL VARIABLES **********************
+const displayElem = document.querySelector('body'); // Reference to display.
+let multilineString = ''; // Accumulator or the call stack visualization text.
+//*************************** LOGIC *********************************
+function recursiveSumOfDigits(n){ // 'n' current number being processed.
+    const currentCallStack = new Error().stack; // Captures current call stack as string.
+    let stackFrames = currentCallStack.split('\n').slice(1).filter(Boolean); // Splits into array of stack entries. 
+    const indent = '    '.repeat(stackFrames.length); // Creates indentation proportional to call depth.
+    const funcName = stackFrames[stackFrames.length-1].match(/[^\/]+(?=\.html)/)[0]; // Extract function name from call stack.
+    multilineString += `${indent}${funcName}(${n})\n`; // Appends curren call to visualization.
+    displayElem.textContent = multilineString; // Updates DOM with new visualization state.
+    
+    if(n < 10){ // Base case: single-digit number. 
+        multilineString += `${indent}return ${n}  ---  Base case\n`; // Marks base case in visualization.
+        return n; // Terminates recursion by returning final digit.
+    } 
+    
+    // Recursive case: processes last digit + sum of remaining digits.
+    const result = (n%10)+recursiveSumOfDigits(Math.floor(n/10)); // %10 gets last digit, Math.floor(n/10) removes it.
+    multilineString += `${indent}return ${result}\n`; // Shows return value in visulaization.
+    displayElem.textContent = multilineString; // Updates display.
+    return result; // Passes result back through call stack.
+}
+//*************************** INITIALIZATION ************************
+onload = ()=>{ // Runs when DOM is fully loaded.
+    const number = 1234567; // Input number for demonstration.
+    const sumOfDigits = recursiveSumOfDigits(number); // Starts recursive calculation.
+    multilineString += `\n\n    Sum of digits in ${number} = ${sumOfDigits}`; // Append final result.
+    displayElem.textContent = multilineString; // Renders complete visualization.
+}
+//*******************************************************************
+        </script>
+    </body>
+</html>

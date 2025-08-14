@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Cellular Automaton. Hodgepodge Machine</title>
+        <style> /* Internal CSS styling */
+            *{ /* Universal selector */
+                margin: 0; /* Remove default margin */
+                padding: 0; /* Remove default padding */
+                box-sizing: border-box; /* Include padding/border in element's total width and height */
+            }
+            body{ /* Type selector */
+                min-width: 100%; /* Ensure full width coverage */
+                height: 100vh; /* 100% of the viewport's height */
+                display: flex; /* Flexbox layout */
+                flex-direction: column; /* Stack children vertically */
+            }
+            header{ /* Type selector */
+                width: 100%; /* 100% of available parent's width */
+                height: 75px; /* Fixed height */
+                background-color: indigo;
+                color: lavender;
+                display: flex; /* Flexbox layout */
+                justify-content: space-evenly; /* Evenly space controls */
+                align-items: center; /* Vertical centering */
+                font: min(2.2vw, 2.2vh) Arial; /* Responsive font */
+            }
+            input,button{ /* List selector */
+                font-size: inherit; /* Use parent's font size */
+                font-family: inherit; /* Use parent's font */
+                background-color: indigo;
+                color: lavender;
+            }
+            figure{
+                width: 100%; /* 100% of available parent's width */
+                height: 100%; /* 100% of available parent's height */
+                background-color: blueViolet; /* Fallback solid color if canvas doesn't cover area */
+                position: relative; /* Positioning context for canvas */
+                display: grid; /* Center canvas using grid */
+                place-items: center; /* Vertical + horizontal canvas centering */
+            }
+            canvas{ /* Type selector */
+                position: absolute; 
+                filter: blur(1.2px); /* Soften cell edges for visual comfort */
+                transform: translateZ(0); /* Enable GPU acceleration */
+            }
+        </style>
+    </head>
+    <body> <!-- Tot-level container -->
+        <header> <!-- Control panel section -->
+            <section>Cell:<br>
+                <input type="number" class="cell_size" min="2"max="30" value="12" autocomplete="off">
+            </section>
+            <section>Grid:<br>
+                <input type="checkbox" class="show_grid" checked autocomplete="off" style="width:2.5vw;height:2.5vw;">
+            </section>
+            <section>max_state: <output class="max_state"></output><br>
+                <input type="range" class="max_state" min="3" max="10" value="8" autocomplete="off" style="width:17vw;">
+            </section>
+            <section>Threshold:<br>
+                <input type="number" class="threshold" min="2" max="5" value="3.5" step="0.1" autocomplete="off">
+            </section>
+            <section>Cycle: <output class="cycle_time"></output> ms<br>
+                <input type="range" class="cycle_time" min="0" max="999" value="300" autocomplete="off" style="width:17vw;">
+            </section>
+            <button id="start">&nbsp;Start&nbsp;</button>
+        </header>
+        <figure> <!-- Canvas container -->
+            <canvas></canvas> <!-- Drawing surface for automaton -->
+        </figure>
+        <script> // Embedded JavaScript.
+//*************************** GLOBAL VARIABLES **********************
+const bodyElem = document.querySelector('body'); // Main container for CSS control
+const headerElem = document.querySelector('header'); // Control panel container
+const figureElem = document.querySelector('figure'); // Canvas wrapper for sizing
+const canvasElem = document.querySelector('canvas'); // Drawing surface for automaton
+const ctx = canvasElem.getContext('2d'); // 2D rendering context for canvas drawing
+const sys = {hue:0}; // Simulation state object (stores parameters and hue for color cycling)
+let currGrid, nextGrid; // Double-buffered grids: current display and next generation being calculated
+
+//*************************** EVENTS ********************************
+headerElem.addEventListener('change',inputHandler); // Handle all control panel changes
+headerElem.querySelector('#start').addEventListener('click',runCycles); // Start/stop simulation
+
+//*************************** LOGIC *********************************
+function inputHandler(e = undefined){ // Handles parameter changes from UI controls
+    ['cell_size','threshold','max_state','cycle_time'].forEach(cls=>{ // For each control
+        sys[cls] = Number(headerElem.querySelector(`input.${cls}`).value); // Store numeric value
+        if(['max_state','cycle_time'].includes(cls)){ // Update displayed values for these controls
+            headerElem.querySelector(`output.${cls}`).textContent = sys[cls];
+        }
+    });
+    sys.show_grid = headerElem.querySelector('input.show_grid').checked; // Store grid visibility
+    if((e?.target?.type === 'checkbox' || e?.target?.className === 'cycle_time') && sys.run) return; // Don't reset if just toggling grid or speed
+    sys.run = false; // Stop any running simulation
+    initializeGrid(); // Rebuild grid with new parameters
+    renderGrid(); // Draw initial state
+}
+
+function initializeGrid(){ // Sets up grid structure based on current parameters
+    [sys.rowQt, sys.colQt] = [figureElem.offsetHeight/sys.cell_size | 0, figureElem.offsetWidth/sys.cell_size | 0]; // Calculate rows/cols to fit canvas
+    [canvasElem.width, canvasElem.height] = [sys.colQt*sys.cell_size, sys.rowQt*sys.cell_size]; // Size canvas to exact grid dimensions
+    currGrid = Array.from({length:sys.rowQt},()=> // Create current grid
+            Array.from({length:sys.colQt},()=> // Each cell has 1% chance to start active
+            Math.random() > 0.99 ? Math.floor(Math.random()*sys.max_state)+1 : 0 )); // Active cells get random state (1-max_state)
+    nextGrid = Array.from({length:sys.rowQt},()=> // Create next generation grid
+            new Array(sys.colQt).fill(0)); // Initialize all cells to 0 (inactive)
+}
+
+function renderGrid(){ // Draws current grid state to canvas
+    const [cS,W,H] = [sys.cell_size,canvasElem.width,canvasElem.height]; // Short aliases for readability
+    ctx.clearRect(0,0,W,H); // Clear entire canvas before redrawing
+    gridIterator((r,c)=>{ // Process every cell
+        ctx.fillStyle = currGrid[r][c] <= 0 ? 'linen' : `hsl(${sys.hue},100%,${10+70*currGrid[r][c]/sys.max_state}%)`; // Inactive=linen, active=hue+state-based brightness
+        ctx.fillRect(c*cS, r*cS, cS, cS); // Draw cell as colored square
+    });
+    if(sys.show_grid && cS > 4){ // Draw grid lines if enabled and cells are large enough
+        ctx.strokeStyle = '#444'; // Dark gray grid lines
+        ctx.lineWidth = 1; // Thin lines
+        [0,1].forEach(v=>{ // Draw both vertical (v=0) and horizontal (v=1) lines
+            for(let xy = cS; xy < (v?H:W); xy += cS){ // Space lines by cell size
+                ctx.beginPath(); // Start new path
+                ctx.moveTo(v?0:xy, v?xy:0); // Line start position
+                ctx.lineTo(v?W:xy, v?xy:H); // Line end position
+                ctx.stroke(); // Render line
+            } 
+        });
+    }
+}
+
+function nextCycle(){ // Calculates next generation using Hodgepodge rules
+    gridIterator((r,c)=>{ // Process every cell
+        let sumOfNeighbors = 0; // Sum of active neighbor states
+        [-1,0,1].forEach(dr=>{ // Check all 8 surrounding cells (3x3 grid)
+            [-1,0,1].forEach(dc=>{
+                if(!(dr || dc)) return; // Skip center cell (self)
+                const nr = (r+dr+sys.rowQt)%sys.rowQt; // Neighbor row with toroidal wrapping
+                const nc = (c+dc+sys.colQt)%sys.colQt; // Neighbor column with wrapping
+                if(currGrid[nr][nc] > 0) sumOfNeighbors += currGrid[nr][nc]; // Add neighbor's state if active
+            });
+        });
+        if(currGrid[r][c] === 0){ // If cell is dead
+            nextGrid[r][c] = sumOfNeighbors >= sys.threshold * 2 ? 1 : 0; // Activate if neighbor sum meets threshold
+        } else { // If cell is alive
+            nextGrid[r][c] = currGrid[r][c] < sys.max_state - 1 ? currGrid[r][c] + 1 : 0; // Increment state or reset
+        }
+        nextGrid[r][c] = Math.max(0, Math.min(nextGrid[r][c], sys.max_state - 1)); // Clamp state to valid range
+    });
+}
+
+async function runCycles(){ // Main simulation loop
+    sys.run = true; // Set running flag
+    sys.hue = 0; // Reset color cycle
+    while(sys.run){ // Continue until stopped
+        nextCycle(); // Calculate next generation
+        [currGrid,nextGrid] = [nextGrid,currGrid]; // Swap buffers (current becomes next)
+        renderGrid(); // Draw new generation
+        sys.hue += .1; // Shift hue for color animation
+        await new Promise(r=>setTimeout(r,sys.cycle_time)); // Delay between generations
+    }
+}
+
+function gridIterator(callbackFn){ // Efficient grid traversal helper
+    let r = -1; // Initialize row counter
+    while(++r < sys.rowQt){ // For each row
+        let c = -1; // Initialize column counter
+        while(++c < sys.colQt) callbackFn(r,c); // For each column, execute callback
+    }
+}
+
+//*************************** INITIALIZATION ************************
+onload = ()=>{ // When page loads
+    inputHandler(); // Initialize with default parameters
+}
+//*******************************************************************
+        </script>
+    </body>
+</html>

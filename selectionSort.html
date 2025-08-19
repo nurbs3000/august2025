@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Insertion Sort</title>
+        <style> /* Internal CSS styling */
+            *{ /* Universal selector */
+                margin: 0; /* Remove default margin */
+                padding: 0; /* Removed default padding */
+                box-sizing: border-box; /* Include border and padding in element's total width and height */
+            }
+            #wrapper{ /* id selector */
+                width: 100vw; /* 100% of the viewport's width */
+                height: 100vh; /* 100% of the viewport's height */
+                display: grid; /* Centering using CSS Grid */
+                place-items: center; /* Horizontal and vertical centering */
+                background-color: dimGray; /* The choice of colors is yours */
+                overflow: hidden; /* No scrollbars */
+            }
+            main{ /* Type selector */
+                background-color: darkSeaGreen;
+                position: relative; /* For absolute positioning of elements */
+            }
+            .array-element{ /* Class selector */
+                position: absolute; /* Positioned relative to main */
+                background-color: peru;
+                display: grid; /* Centering using Grid */
+                place-items: center; /* Horizontal and vertical centering */
+                border: 3px solid dimGray; /* Visual boundary */
+                font-family: Arial; /* Readable font */
+                font-weight: bold;
+                transition: background-color, 1s; /* Smoth color transition */
+            }
+        </style>
+    </head>
+    <body>
+        <div id="wrapper"> <!-- Main container for visualization -->
+            <main></main> <!-- Array elements inserted here -->
+        </div>
+        <script> // Embedded JavaScript.
+//*************************** GLOBAL VARIABLES **********************
+// Global variables storing DOM references and configuration
+const wrapperElem = document.querySelector("#wrapper") // Reference to wrapper div
+const mainElem = document.querySelector("main") // Reference to main element
+let size // Will store the pixel size of each array element
+let rowQt, colQt // Will store number of rows and columns in the grid
+
+//*************************** LOGIC *********************************
+function initArray(){ // Initialize visual array with random values(textContent)
+    const sizes = [45,55,65,75,90,105]; // Possible element sizes (px)
+    const [W,H] = [wrapperElem.offsetWidth,wrapperElem.offsetHeight]; // Destructuring syntax. Get wrapper dimensions 
+    size = sizes[~~(Math.random()*sizes.length)]; // Ransomly select element size. ~~ is fast Math.floor
+    [rowQt,colQt] = [Math.floor(H/size), Math.floor(W/size)]; // Destructuring syntax. Calculate grid capacity
+    mainElem.style = `width:${colQt*size}px;height:${rowQt*size}px;`; // Set main dimensions 
+    let index = 0; // Variable to index elements, and encode that index in element's id
+    for(let r = 1; r < rowQt; r += 2) // Skipp every other row for spacing
+        for(let c = 0; c < colQt; c++){ // Iterater over columns
+            createElem(`index${index++}`,~~(Math.random()*rowQt*colQt),r,c); // Create element with random value
+        }
+}
+function createElem(id,content,row,col){ // Creates and styles a sinle array elemet
+    const el = document.createElement('div'); // Create new div element
+
+    el.style = `width:${size}px;height:${size}px;left:${col*size}px;top:${row*size}px;`; // Set size and position
+    el.style.transform = 'scale(.9)'; // Slightly shrink element for spacing
+    el.style.borderRadius = `${size/7}px`; // Rounded corners proportional to size
+    el.className = 'array-element'; // Apply styling class(for CSS)
+    el.id = id; // Set unique id. Element's index in encoded in id.
+    if(id === 'minElem') { // Special styling for the current minimum element
+        el.style.zIndex = '1'; // Ensures it appears above other elements.
+        el.style.backgroundColor = 'deepSkyBlue'; // Distinct color.
+    }
+    el.dataset.col = col; // Store column position in data attribute
+    el.dataset.row = row; // Store row position in data attribute
+    el.textContent = content; // Display the numeric value
+    el.style.fontSize = `${size/2.2}px`; // Set responsive font size.
+    mainElem.appendChild(el); // Add element to DOM
+    return el; // Return reference to created element
+}
+async function selectionSort(arr){ // Selection sort + visualization.
+    let arrNodeList = Array.from(mainElem.querySelectorAll('.array-element')); // Get array elements 
+    for(let i = 0; i < arrNodeList.length-1; i++){ // Outer loop
+        let minIndex = i; // Assume current position is minimum
+        const minElem = createElem('minElem',arrNodeList[i].textContent,~~(i/colQt)*2+1,i%colQt); // Visual indicator for current minimum candidate
+        arrNodeList[i].style.backgroundColor = 'deepSkyBlue'; // Highlight current element
+        await moveElem(minElem,~~(i/colQt)*2,i%colQt); // Move visual indicator above current element
+        for(let j = i+1; j < arrNodeList.length; j++){ // Inner loop to find minimum
+            await moveElem(minElem,~~(j/colQt)*2,j%colQt); // Move visual indicator to next element
+            await new Promise(r=>setTimeout(r,30)); // Small delay in real time (symboliyze comparison pause)
+            if(+arrNodeList[j].textContent < +arrNodeList[minIndex].textContent){
+                arrNodeList[minIndex].style.backgroundColor = 'peru'; // Reset old minimum color
+                arrNodeList[j].style.backgroundColor = 'deepSkyBlue'; // Highlight new minimum
+                await new Promise(r=>setTimeout(r,700)); // Pause to show change
+                minIndex = j; // Update minimum index
+                minElem.textContent = arrNodeList[j].textContent; // Update visual indicator content
+            }
+        }
+        minElem.remove(); // Remove visual indicator
+        if(minIndex !== i){ // Swap if minimum isn't in curren position
+            await Promise.all([ // Move both elements simultaneously
+                moveElem(arrNodeList[i],+arrNodeList[minIndex].dataset.row,+arrNodeList[minIndex].dataset.col), 
+                moveElem(arrNodeList[minIndex],+arrNodeList[i].dataset.row,+arrNodeList[i].dataset.col)]);
+            [arrNodeList[i].id,arrNodeList[minIndex].id] = [arrNodeList[minIndex].id,arrNodeList[i].id]; // Swap IDs
+            [arrNodeList[i],arrNodeList[minIndex]] = [arrNodeList[minIndex],arrNodeList[i]]; // Swap array positions.
+        }
+        arrNodeList[i].style.backgroundColor = 'limeGreen'; // Mark as sorted
+    }
+}
+function moveElem(el,row,col){ // Animates movement of an element to a new grid position
+    return new Promise(res=>{ // Return promise, resolves when animation completes.
+        const [x0,y0] = [Number(el.dataset.col)*size,Number(el.dataset.row)*size]; // Move from coordinates
+        const [x1,y1] = [col*size,row*size]; // Target coordinates
+        el.style.zIndex = "1"; // Bring element to fron during movement
+        const animation = el.animate( // Create animation (WAAPI)
+            [ // Keyframes array
+                {left: x0+"px", top: y0+"px"}, // Start position
+                {left: x1+"px", top: y1+"px"}, // End position
+            ],
+            { // Animation settings
+                duration: Math.hypot(x1-x0,y1-y0)*5, // Distance-based timing
+                iterations: 1, // Do it once
+                easing: "linear", // Contant speed animation
+                fill: "forwards", // Maintain final state after animation
+            }
+        );
+        animation.finished.then(()=>{ // Cleanup after animation
+            el.dataset.col = col; // Update position data
+            el.dataset.row = row;
+            el.style.zIndex = ""; // Reset z-index
+            res(); // Resolve the promise
+        });
+    });
+}
+
+//*************************** INITIALIZATION ************************
+onload = ()=>{ // Event fires when page is loaded.
+    initArray(); // Create and position array element.
+    selectionSort(); // Begin sorting visalization.
+}
+//*******************************************************************
+        </script>
+    </body>
+</html>

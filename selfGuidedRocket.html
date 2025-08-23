@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Seft Guided Rocket</title>
+        <style> /* Internal CSS styling */
+            *{ /* Universal selector */
+                margin: 0; /* Reset default margin */
+                padding: 0; /* Reset defaut padding */ 
+                box-sizing: border-box; /* Include padding and border in element's total width and height */
+            }
+            body{ /* Type selector */
+                min-width: 100%; /* Ensures full width */
+                height: 100vh; /* 100% of the viewport's width */
+                display: flex; /* Flexbox layout */
+                flex-direction: column; /* Vertical stacking */
+                
+            }
+            figure{ /* Type selector */
+                width: 100%; /* 100% of parent's available width */
+                height: 100%; /* 100% of parent's availble height */
+                background-color: midnightBlue; /* your choice of color */
+                position: relative; /* Positioning context for canvas */
+            }
+            canvas{ /* Type selector */
+                position: absolute; /* Positioned relative to figure */
+            }
+        </style>
+    </head>
+    <body>
+        <figure> <!-- Container for canvas -->
+            <canvas></canvas> <!-- The element where all graphics are drawn -->
+        </figure>
+        <script> // Embedded JavaScript
+//*************************** GLOBAL VARIABLES **********************
+const bodyElem = document.querySelector('body'); // References to DOM elements (for convenience)
+const figureElem = document.querySelector('figure');
+const canvasElem = document.querySelector('canvas');
+const ctx = canvasElem.getContext('2d'); // 2D drawing context for canvas.
+const π = Math.PI; // Alias for Math.PI. Alt code 227
+const gameObjs = []; // Array that holds all game objects(ship, rockets, trails)
+const BASE_VELOCITY = .1; // Base speed multiplier for all moving objects.
+let prevTimestamp; // Stores the timestamp from the previous frame 
+//*************************** LOGIC *********************************
+class GameObj{ // Main class for all entities in the simulation
+    static rotationDirection(curr,targ){ // Method to determine shortest rotation direction between two angles.
+        let delta = targ-curr; // Raw difference between target and current angles.
+        if(delta > π) delta -= 2*π; // Adjust if over π (clockwise shorter).
+        else if(delta < -π) delta += 2*π; // Adjust if under -π (counter-clockwise shorter);
+        return Math.sign(delta); // Return -1, 0, or 1 for direction.
+    }
+    constructor(type,rocket){ // Constructor initializes an object based on its type
+        const {width:W,height:H} = canvasElem; // Desctucruring syntax with aliases. 
+        this.type = type; // Assign's the objec't type ('targetShip', etc.)
+        switch(type){
+            case 'targetShip':
+                this.x = W/2; // Place the target ship an the center of the canvas
+                this.y = H/2;
+                this.velX = BASE_VELOCITY*Math.random(); // Random x velocity
+                this.velY = BASE_VELOCITY*Math.random(); // Random y velocity
+                this.size = 30; // Size (used for collision and rendering)
+                break;
+            case 'rocket':
+                const ship = gameObjs.find(obj=>obj.type === 'targetShip'); // Find the ship to aim at.
+                this.x = W*Math.random(); // Spawns teh rocket at a random x position on the edge
+                this.y = [0,H][2*Math.random() | 0]; // ...and at eigher the top (0) or bottom (H) of the canvas
+                this.rotAngle = Math.atan2(ship.y-this.y,ship.x-this.x); // Initial angle towards the target.
+                this.vel = BASE_VELOCITY*(1.05+Math.random()*.3); // Sets velocity faster then base with some randomness
+                this.angularVel = 0.003; // The rate at which the rocket can turn (radians per ms)
+                this.size = 15; // Defines its size
+                this.hue = 59*(Math.random()*6 | 0); // Picks a random hue from a set of 6 values for its trail color
+                this.trailInterval = 30; // Time interval (ms) between spawning new trail particles
+                this.timeSinceLastTrail = 0; // Tracks time elapsed since the las trail was created
+                break;
+            case 'trail': // Particle effect for rocket exhaust
+                this.x = rocket.x-rocket.size*Math.cos(rocket.rotAngle); // Position particle behind the rocket
+                this.y = rocket.y-rocket.size*Math.sin(rocket.rotAngle);
+                this.hue = rocket.hue; // Inherits the color from its parent rocket
+                this.velX = BASE_VELOCITY*.3*Math.random(); // Gives it a small random x(next line y) velocity
+                this.velY = BASE_VELOCITY*.3*Math.random();
+                this.radius = 5; // Starting size of the particle
+                this.maxAge = 2500; // Time (ms) after which the particle will fade out and be removed
+                this.age = 0; // Tracks how long the particle has been alive
+                this.alpha = 1; // Initial opacity of the particle (fully opaque)
+                break;
+            }
+        }
+    update(t){ // Updates the object's state based on the elapsed time (t)
+        const {width:W,height:H} = canvasElem; // Desctucturing syntax with aliases
+        switch(this.type){
+            case 'targetShip':
+                this.x += this.velX*t; // Moves the ship based on its velocity and time
+                this.y += this.velY*t;
+                // Implements 'bouncing' off the edges of the vanvas
+                if(this.x < this.size){this.x = this.size; this.velX *= -1;}
+                if(this.x > W-this.size){this.x = W-this.size; this.velX *= -1;}
+                if(this.y < this.size){this.y = this.size; this.velY *= -1;}
+                if(this.y > H-this.size){this.y = H-this.size; this.velY *= -1;}
+                break;
+            case 'rocket':
+                const ship = gameObjs.find(obj=>obj.type === 'targetShip'); // Reacquires target ship reference
+                this.x += this.vel*t*Math.cos(this.rotAngle); // Moves forward along current angle
+                this.y += this.vel*t*Math.sin(this.rotAngle);
+                const targetAngle =  Math.atan2(ship.y-this.y,ship.x-this.x); // Calculate new angle to target
+                const rotDirection = GameObj.rotationDirection(this.rotAngle,targetAngle); // Determines turn direction
+                this.rotAngle += rotDirection*this.angularVel*t; // Updates its angle based on turn rate and time.
+                this.timeSinceLastTrail += t; // Accumulates time since last trail ticle
+                if(this.timeSinceLastTrail >= this.trailInterval){ // Check if it's time to spawn a new trail
+                    gameObjs.push(new GameObj('trail',this)); // Creates a new trail particle
+                    this.timeSinceLastTrail = 0; // Resets the trail timer
+                }
+                if(Math.sqrt((this.x-ship.x)**2+(this.y-ship.y)**2) < this.size+ship.size){ // Checks for collision (2 circles) with the target ship 
+                    const idx = gameObjs.findIndex(obj=>obj === this); // Finds this rocket index in the array
+                    gameObjs.splice(idx,1); // Removes the rocket from the game upon collision
+                }
+                break;
+            case 'trail':
+                this.x += this.velX*t; // Moves the particle
+                this.y += this.velY*t;
+                this.radius *= 1.01; // Gradualy inclrease the particl's size
+                this.age += t; // Ages the particle
+                this.alpha = 1-this.age/this.maxAge; // Calculates new opacity based on age (fades out)
+                if(this.age >= this.maxAge){ // Checks if the particle has exceeded it lifespan
+                    gameObjs.splice(gameObjs.indexOf(this),1); // Removes the particle from the game
+                }
+                break;
+        }
+    }
+    render(){ // Draws the object to the canvas
+        switch(this.type){
+            case 'rocket':
+            case 'targetShip':
+                ctx.save(); // Saves the current drawing context state
+                ctx.translate(this.x,this.y); // Moves the drawing origin to the object's position
+                const fontSize = this.size*2; // Calculates font size based on object's size
+                ctx.font = `${fontSize}px Arial`; // Sets the forn for the emoji
+                if(this.type === 'rocket') ctx.rotate(this.rotAngle+π/4); // Rotate the rocket. π/4 adjusts the emoji's native angle.
+                const emoji = this.type === 'rocket' ? '🚀' : '🛸'; // Chooses the appropriate emoji
+                ctx.fillText(emoji,-fontSize*.66,fontSize*.34); // Draws the emoji, offset to center it
+                ctx.restore(); // Restores the drawing context to its previous state
+                break;
+            case 'trail':
+                ctx.save();
+                ctx.fillStyle = `hsla(${this.hue},100%,50%,${this.alpha})`; // Sets color with hue and fading alpha
+                ctx.beginPath();
+                ctx.arc(this.x,this.y,this.radius,0,2*π); // Draw a circle for the trail particle
+                ctx.fill();
+                ctx.restore();
+                break;
+        }
+    }
+}
+function animate(timestamp){ // The main animation loop, called by requestAnimationFrame
+    const elapsedTime = timestamp-prevTimestamp; // Calculates time passed since the last frame
+    prevTimestamp = timestamp; // Updates the timestamp for the next frame
+    ctx.clearRect(0,0,canvasElem.width,canvasElem.height); // Clear the canvas
+    gameObjs.forEach(obj=>{ // Updates and renders every game object
+        obj.update(elapsedTime);
+        obj.render();
+    });
+    requestAnimationFrame(animate); // Continue animation loop
+}
+//*************************** INITIALIZATION ************************
+onload = ()=>{ // When page is loaded
+    [canvasElem.width,canvasElem.height] = [figureElem.offsetWidth,figureElem.offsetHeight]; // Destructuring syntax. Sizes the canvas to match its container
+    gameObjs.push(new GameObj('targetShip')); // Create the target ship
+    setInterval(()=>{gameObjs.push(new GameObj('rocket'));},2000); // Spawns a new rocket every 2000 milliseconds (2 seconds)
+    prevTimestamp = performance.now(); // Initializes the timestamp for the animation loop
+    requestAnimationFrame(animate); // Starts the animation loop
+}
+//********************************************************************
+        </script>
+    </body>
+</html>

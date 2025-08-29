@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Create and edit polygon on canvas</title>
+        <style> /* Internal CSS styling */
+            *{ /* Universal selector */
+                margin: 0; /* Reset default margin */
+                padding: 0; /* Reset default padding */
+                box-sizing: border-box; /* Include padding and border in element's total width and height */
+            }
+            body{ /* Type selector */
+                min-width: 100%; /* Ensure full width */
+                height: 100vh; /* 100% of the viewport's width */
+                background-color: #222; /* your choice */
+                position: relative; /* Positioning context for canvas */
+                overflow: hidden; /* Clip overflow, no scrollbars */
+            }
+            canvas{ /* Type selector */
+                background-color: #777;
+                position: absolute; /* Positioned relative to body */
+            }
+        </style>
+    </head>
+    <body>
+        <canvas></canvas> <!-- Canvas element for drawing -->
+        <script> // Embedded JavaScript
+//*************************** GLOBAL VARIABLES **********************
+const bodyElem = document.querySelector('body'); // Reference to body element
+const canvasElem = document.querySelector('canvas'); // Reference to canvas
+const ctx = canvasElem.getContext('2d'); // 2D drawing context for canvas
+const sys = { // System state object
+    DELTA_RESIZE: 5, // Pixel threshold for resize handle detection
+    DELTA_DRAG: 10, // Pixel threshold for canvas drag detection
+    isHandleCanvas: false, // Flag, mouse is over canvas handle
+    isPoligonFinished: false, // Flag, polygon is closed
+    isDraggingCanvas: false, // Flag, canvas is being dragged/resized
+    isDraggingVertex: false, // Flag, vertex is being dragged
+    hoverVertexIdx: -1, // Index for hovered vertex (-1 if none)
+    canvasClone: null, // Clone of canvas for drag/resize reference
+    vertexRadius: 5, // Visual radius of vertices
+    vertexInitialX: undefined, // Initial X coordinate when vertex drag starts
+    vertexInitialY: undefined, // Initial Y coordinate when vertex drag starts
+    minCanvasSize: 20, // Minimum allowed canvas dimensions
+};
+const vertices = []; // Array to stor polygon vertices {x,y}
+//*************************** EVENTS ********************************
+bodyElem.addEventListener('click',handleMouse);
+bodyElem.addEventListener('mousedown',handleMouse);
+bodyElem.addEventListener('mouseup',handleMouse);
+bodyElem.addEventListener('mousemove',handleMouse);
+//*************************** LOGIC *********************************
+function handleMouse(e){ // Central mouse event handler
+    [sys.mX,sys.mY] = [e.clientX,e.clientY]; // Destructuring syntax. Store curren mouse coordinates (viewport-relative)
+    [sys.dX,sys.dY] = [sys.mX-sys.initialMx,sys.mY-sys.initialMy]; // Calculate mouse movemenet delta
+    if(e.target === canvasElem) [sys.canvasMx,sys.canvasMy] = localMouseCoor(e); // Get canvas relative mouse coordinates, if mouse within canvas
+    if(!sys.isDraggingVertex) handleCanvas(e); // Handle canvas operations if not dragging vertex
+    if(!sys.isHandleCanvas) handleVertices(e); // Handle vertex operations if not handle canvas
+    render(); // Update visual display (canvas)
+}
+function handleCanvas(e){ // Handles canvas dragging and resizing
+    switch(e.type){ // Switch based on event type
+        case 'mousemove': // Mouse movement handling
+            if(e.target === canvasElem) setCursorStyle(e.target); // Update cursor style when over canvas
+            if(!sys.isDraggingCanvas) return; // Exit if not actively dragging
+            switch(sys.canvasClone.style.cursor){ // Execute based on current cursor type
+                case 'move': setCanvas(parseInt(sys.canvasClone.style.left)+sys.dX, parseInt(sys.canvasClone.style.top)+sys.dY); break; // Move canvas position
+                case "n-resize": nResize(); break; // Resize north edge
+                case "s-resize": sResize(); break; // Resize south edge
+                case "w-resize": wResize(); break; // Resize west edge
+                case "e-resize": eResize(); break; // Resize east edge
+                case "ne-resize": nResize(); eResize(); break; // diagonal movement is split in two cardinal movements. 
+                case "se-resize": sResize(); eResize(); break;
+                case "sw-resize": sResize(); wResize(); break;
+                case "nw-resize": nResize(); wResize(); break
+            }
+            if(canvasElem.width <= sys.minCanvasSize || canvasElem.height <= sys.minCanvasSize) sys.isDraggingCanvas = false; // Stop drag if canvas too small
+        break;
+        case 'mousedown': // Mouse button pressed
+            if(e.target.style.cursor === 'default') return; // Ignore if cursor indicates no action
+            [sys.initialMx,sys.initialMy] = [e.clientX,e.clientY]; // Destucturing syntax. Store initial mouse position
+            sys.canvasClone = e.target.cloneNode(); // Clone canvas state for reference
+            sys.isDraggingCanvas = true; // Set dragging flag
+        break;
+        case 'mouseup': // Mouse button released
+            sys.isDraggingCanvas = false; // Clear dragging flag
+        break;
+    }
+    function nResize(){ // North resize logic
+        canvasElem.style.top = parseInt(sys.canvasClone.style.top)+sys.dY+'px';
+        canvasElem.height = parseInt(sys.canvasClone.height)-sys.dY;
+    }
+    function sResize(){ // South resize logic
+        canvasElem.height = parseInt(sys.canvasClone.height)+sys.dY;
+    }
+    function wResize(){ // West resize logic
+        canvasElem.style.left = parseInt(sys.canvasClone.style.left)+sys.dX+'px';
+        canvasElem.width = parseInt(sys.canvasClone.width)-sys.dX;
+    }
+    function eResize(){ // East resize logic
+        canvasElem.width = parseInt(sys.canvasClone.width)+sys.dX;
+    }
+}
+function handleVertices(e){ // Handles vertex creation, selection, and dragging
+    if(e.target !== canvasElem) return; // Only handles events on canvas
+    const [x,y] = [sys.canvasMx,sys.canvasMy]; // Get canvas local coordinates
+    switch(e.type){ // Switch based on event type
+        case 'click': // Click event handling
+            if(e.target.style.cursor !== 'default' || sys.isPoligonFinished) return; // Ignore if not default cursor or polygon finished
+            if(vertices.length > 2){ // Check for polygon completion
+                const v = vertices[0]; // Get first vertex
+                const dist = Math.sqrt((x-v.x)**2+(y-v.y)**2); // Calculate distance to first vertex
+                if(dist < 2*sys.vertexRadius){ // If close to first vertex
+                    sys.isPoligonFinished = true; // Mark polygon as closed
+                    return; // Exit (will not add vertex to array)
+                }
+            }
+            vertices.push({x,y}); // Add new vertex at current position
+        break;
+        case 'mousemove': // Mouse movement handling
+            if(sys.isDraggingVertex){ // If dragging a vertex
+                const v = vertices[sys.hoverVertexIdx]; // Sortcut for dragged vertex (for convenience)
+                [v.x, v.y] = [sys.vertexInitialX+sys.dX, sys.vertexInitialY+sys.dY]; // Desctructuring syntax. Update vertex position with mouse movement delta
+            }else{ // If not dragging
+                e.target.style.cursor = 'default'; // Reset to default cursor
+                sys.hoverVertexIdx = -1; // Reset hover index
+                vertices.forEach((v,i)=>{ // Check all vertices for hover
+                    const dist = Math.sqrt((x-v.x)**2+(y-v.y)**2); // Calculate distance to vertex
+                    if(dist <= sys.vertexRadius){ // If within vertex radius
+                        e.target.style.cursor = 'pointer'; // Change to pointer cursor
+                        sys.hoverVertexIdx = i; // Store hovered index
+                    }
+                });
+            }
+        break;
+        case 'mousedown': // Mouse button position
+            if(sys.hoverVertexIdx === -1) return; // Exit if not hoviring over vertex
+            const v = vertices[sys.hoverVertexIdx]; // Shortcut for convenience
+            e.target.style.cursor = 'grab'; // Change to grab cursor
+            sys.isDraggingVertex = true; // Set vertex dragging flag
+            [sys.vertexInitialX, sys.vertexInitialY] = [v.x, v.y]; // Store initial vertex position
+        break;
+        case 'mouseup': // Mouse button released
+            sys.isDraggingVertex = false; // Clear vertex dragging flag
+        break;
+    }
+}
+function render(){ // Renders the canvas content
+    ctx.clearRect(0,0,canvasElem.width,canvasElem.height); // Clear the canvas
+    if(vertices.length > 1){ // Draw polygon if present 2 or more vertices
+        ctx.beginPath(); // Start new path
+        ctx.strokeStyle = 'orangeRed'; // Set line color
+        ctx.lineWidth = 4; // Set line width
+        vertices.forEach((v,i)=>{ // Draw polygon edges
+            if(!i) ctx.moveTo(v.x,v.y); // Move to first vertex
+            else ctx.lineTo(v.x,v.y); // Draw line to subsequent vertices
+        });
+        if(sys.isPoligonFinished) ctx.closePath(); // Close path if polygon finished
+        ctx.stroke(); // Stroke the path
+    }
+    vertices.forEach((_,i)=>drawVertex(i)); // Draw all vertices
+    function drawVertex(idx){ // Draw inidividual vertex
+        ctx.fillStyle = 'blue'; // Set vertex color
+        ctx.beginPath(); // Start new path
+        ctx.arc(vertices[idx].x,vertices[idx].y,sys.vertexRadius,0,2*Math.PI); // Draw circle representing vertex
+        ctx.fill(); // Fill the circle
+    }
+}
+function setCanvas(left,top,width,height){ // Sets canvas dimensions and position
+    const el = canvasElem; // Canvas reference, for convenience
+    [el.width,el.height,el.style.left,el.style.top] = [width || el.width,height || el.height,left+'px',top+'px']; // Update properties
+}
+function localMouseCoor(e){ // Converts mouse coordinates to cavas-local space
+    const rect = e.target.getBoundingClientRect(); // Get canvas bouding rectangle
+    return [e.clientX-rect.left, e.clientY-rect.top]; // Calculate local coordinates 
+}
+function setCursorStyle(elem) { // Determines appropriate cursor style based on mouse position relative to canvase edges and corners
+    const [x, y, w, h, dr, dd] = [ // Destructure variables for readability
+        sys.canvasMx, sys.canvasMy, elem.width, elem.height, 
+        sys.DELTA_RESIZE, sys.DELTA_DRAG, 
+    ];
+    // Define cursor priority rules (earlier matches take precedence)
+    const rules = [ // Array of condition-cursor pairs
+        { condition: x < dr && y < dr, cursor: 'nw-resize' },
+        { condition: x < dr && y > h-dr, cursor: 'sw-resize' },
+        { condition: x > w-dr && y < dr, cursor: 'ne-resize' },
+        { condition: x > w-dr && y > h-dr, cursor: 'se-resize' },
+        { condition: x < dr, cursor: 'w-resize' },
+        { condition: x > w-dr, cursor: 'e-resize' },
+        { condition: y < dr, cursor: 'n-resize' },
+        { condition: y > h-dr, cursor: 's-resize' },
+        { condition: x < dd || x > w - dd || y < dd || y > h - dd, cursor: 'move' }
+    ];
+    const match = rules.find(rule=>rule.condition); // Find first matching rule
+    if(match){ // If match found
+        elem.style.cursor = match.cursor; // Set corresponding cursor
+        sys.isHandleCanvas = true; // Set canvas handling flag
+    }else{ // If no match
+        sys.isHandleCanvas = false; // Clear canvas handling flag
+    }
+}
+//*************************** INITIALIZATION ************************
+onload = ()=>{ // Window load event handler
+    const [W,H] = [bodyElem.offsetWidth, bodyElem.offsetHeight]; // Get body dimensions
+    setCanvas(W/4 | 0, H/4 | 0, W/2 | 0, H/2 | 0); // Center canvas with half body dimensions
+}
+//*******************************************************************
+        </script>
+    </body>
+</html>
